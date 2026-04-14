@@ -723,65 +723,22 @@ function setMode(m){
   $('mode-test').classList.toggle('active',m==='test');
 }
 
-// ── JSONBin Config ──────────────────────────────────────────
-// 1. Đăng ký tại jsonbin.io (miễn phí)
-// 2. Tạo Bin mới với nội dung [] (mảng rỗng)
-// 3. Copy Bin ID và Access Key dán vào 2 dòng bên dưới
-const JBIN_ID  = '69de2ab5856a682189318c5e';
-const JBIN_KEY = '$2a$10$Mrx6G7YfgduCGODdOT7L2OWJcEKazS6pjxO0qTSWSoj02hstTRUa6';
-
 // ── Leaderboard ──────────────────────────────────────────────
 const LK='ds_tin7_v3';
-const JBIN_URL=`https://api.jsonbin.io/v3/b/${JBIN_ID}`;
-const JBIN_HEADERS={'Content-Type':'application/json','X-Access-Key':JBIN_KEY,'X-Bin-Versioning':'false'};
-const jbEnabled=()=>JBIN_ID!=='YOUR_BIN_ID'&&JBIN_KEY!=='YOUR_ACCESS_KEY';
-
-function getLocalLB(){try{return JSON.parse(localStorage.getItem(LK))||[];}catch{return[];}}
-function saveLocalLB(d){localStorage.setItem(LK,JSON.stringify(d));}
-
-async function fetchLBData(){
-  if(jbEnabled()){
-    try{
-      const r=await fetch(JBIN_URL+'/latest',{headers:{'X-Access-Key':JBIN_KEY}});
-      const j=await r.json();
-      const raw=Array.isArray(j.record)?j.record:[];
-      const data=raw.filter(e=>e&&e.name); // lọc placeholder
-      data.sort((a,b)=>b.score-a.score||a.elapsed-b.elapsed);
-      saveLocalLB(data);
-      return data;
-    }catch(err){console.warn('JSONBin read failed, dùng local:',err);}
-  }
-  return getLocalLB();
-}
-
-async function addEntry(name,cls,score,elapsed){
+function getLB(){try{return JSON.parse(localStorage.getItem(LK))||[];}catch{return[];}}
+function saveLB(d){localStorage.setItem(LK,JSON.stringify(d));}
+function addEntry(name,cls,score,elapsed){
+  const all=getLB();
   const e={name,cls,score,total:TOTAL,elapsed,ts:Date.now()};
-  S.lbTs=e.ts;
-  const all=getLocalLB();
-  all.push(e);
-  all.sort((a,b)=>b.score-a.score||a.elapsed-b.elapsed);
-  const top=all.slice(0,100);
-  saveLocalLB(top);
-  if(jbEnabled()){
-    try{
-      // Đọc lại từ server để gộp, tránh ghi đè
-      const r=await fetch(JBIN_URL+'/latest',{headers:{'X-Access-Key':JBIN_KEY}});
-      const j=await r.json();
-      const remote=Array.isArray(j.record)?j.record:[];
-      remote.push(e);
-      remote.sort((a,b)=>b.score-a.score||a.elapsed-b.elapsed);
-      await fetch(JBIN_URL,{method:'PUT',headers:JBIN_HEADERS,body:JSON.stringify(remote.slice(0,100))});
-    }catch(err){console.warn('JSONBin write failed:',err);}
-  }
+  all.push(e);all.sort((a,b)=>b.score-a.score||a.elapsed-b.elapsed);
+  const top=all.slice(0,100);saveLB(top);S.lbTs=e.ts;
 }
-
-async function renderLB(){
+function renderLB(){
+  const data=getLB();
   const tbody=$('lb-body'),empty=$('lb-empty');
-  tbody.innerHTML='<tr><td colspan="7" style="text-align:center;color:#888;padding:20px">⏳ Đang tải bảng xếp hạng...</td></tr>';
-  empty.style.display='none';
-  const data=await fetchLBData();
   tbody.innerHTML='';
   if(!data.length){empty.style.display='block';return;}
+  empty.style.display='none';
   data.forEach((e,i)=>{
     const tr=document.createElement('tr');
     if(e.ts===S.lbTs)tr.className='me';
@@ -794,11 +751,9 @@ async function renderLB(){
     tbody.appendChild(tr);
   });
 }
-
-async function renderPreview(){
+function renderPreview(){
+  const data=getLB().slice(0,5);
   const el=$('preview-rows');
-  el.innerHTML='<div style="text-align:center;color:#666;font-size:.8rem;padding:9px">⏳ Đang tải...</div>';
-  const data=(await fetchLBData()).slice(0,5);
   if(!data.length){el.innerHTML='<div style="text-align:center;color:#444;font-size:.8rem;padding:9px">Chưa có dữ liệu – hãy là người đầu tiên! 🚀</div>';return;}
   const medals=['🥇','🥈','🥉','4️⃣','5️⃣'];
   el.innerHTML=data.map((e,i)=>`<div class="pr-row">
@@ -1051,7 +1006,7 @@ function confirmSubmit(){
   const msg=left>0?`Còn ${left} câu chưa trả lời. Nộp bài không?`:'Đã trả lời hết. Nộp bài?';
   if(confirm(msg))doSubmit();
 }
-async function doSubmit(){
+function doSubmit(){
   S.submitted=true;clearInterval(S.timerId);
   S.elapsed=S.showTimer?Math.floor((Date.now()-S.start)/1000):0;
   const correct=QS.filter((q,i)=>S.ans[i]===q.ans).length;
@@ -1073,7 +1028,7 @@ async function doSubmit(){
   $('rs-time').textContent=S.showTimer?fmt(S.elapsed):'--';
   $('streak-sum').textContent=`🔥 Chuỗi đúng dài nhất: ${S.maxStreak} câu`;
   $('rv-area').style.display='none';
-  await addEntry(S.name,S.cls,correct,S.elapsed);
+  addEntry(S.name,S.cls,correct,S.elapsed);
   showScr('scr-result');
   if(pct>=70)confetti();
 }
@@ -1117,7 +1072,7 @@ function toggleReview(){
 }
 
 // ── LB nav ───────────────────────────────────────────────────
-async function goLb(){showScr('scr-lb');await renderLB();}
+function goLb(){renderLB();showScr('scr-lb');}
 function backLb(){
   if(S.submitted)showScr('scr-result');
   else if(S.start>0)showScr('scr-game');
